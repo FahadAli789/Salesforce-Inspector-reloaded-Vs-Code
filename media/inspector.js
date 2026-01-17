@@ -6,8 +6,16 @@ export let apiVersion = localStorage.getItem("apiVersion") == null ? defaultApiV
 export let sessionError;
 const clientId = "Salesforce Inspector Reloaded";
 
+// Helper function to get URL params - works in both browser extension and VS Code webview
+// In VS Code webviews, location.search contains VS Code's internal params, not ours.
+// Our params are injected as window.__queryString by the extension.
+export function getQueryParams() {
+    const queryString = window.__queryString || window.location.search.slice(1);
+    return new URLSearchParams(queryString);
+}
+
 // Auto-detect Proxy Mode immediately upon module load
-const _params = new URLSearchParams(window.location.search);
+const _params = getQueryParams();
 const _isProxy = _params.get("proxy") || _params.get("host") === "VSCodeProxy" || window.location.hostname === "localhost" || window.location.hostname === "127.0.0.1";
 const _hostParam = _params.get("host");
 
@@ -17,15 +25,22 @@ export let sfConn = {
   isProxy: !!_isProxy,
 
   async getSession(sfHost) {
+    if (window.__initialHost) {
+        this.instanceHostname = window.__initialHost;
+        this.isProxy = true;
+        this.sessionId = "dummy-session-id-handled-by-vscode";
+        return this.sessionId;
+    }
+
     if (this.isProxy) {
         // Update/Persist hostname if provided
-        if (sfHost && sfHost !== "VSCodeProxy") {
+        if (sfHost && sfHost !== "VSCodeProxy" && sfHost !== "null" && sfHost !== "undefined") {
             this.instanceHostname = sfHost;
             localStorage.setItem("vscode_proxy_host", sfHost);
-        } else if (!this.instanceHostname) {
+        } else if (!this.instanceHostname || this.instanceHostname === "null") {
             // Recover from storage if we don't have it yet
             const cached = localStorage.getItem("vscode_proxy_host");
-            if (cached) this.instanceHostname = cached;
+            if (cached && cached !== "null" && cached !== "undefined") this.instanceHostname = cached;
         }
         return this.sessionId;
     }
@@ -36,12 +51,12 @@ export let sfConn = {
     // Check if we are running in the VS Code Proxy mode (Redundant check but safe)
     if (searchParams.get("host") === "VSCodeProxy" || searchParams.get("proxy")) {
       let hostParam = searchParams.get("host");
-      if (hostParam && hostParam !== "VSCodeProxy") {
+      if (hostParam && hostParam !== "VSCodeProxy" && hostParam !== "null" && hostParam !== "undefined") {
           this.instanceHostname = hostParam;
           localStorage.setItem("vscode_proxy_host", hostParam);
       } else {
              const cached = localStorage.getItem("vscode_proxy_host");
-             if (cached) this.instanceHostname = cached;
+             if (cached && cached !== "null" && cached !== "undefined") this.instanceHostname = cached;
       }
       this.sessionId = "dummy-session-id-handled-by-vscode";
       this.isProxy = true;
@@ -53,7 +68,7 @@ export let sfConn = {
       this.sessionId = "dummy-session-id-handled-by-vscode";
       this.isProxy = true;
       const cached = localStorage.getItem("vscode_proxy_host");
-      if (cached) this.instanceHostname = cached;
+      if (cached && cached !== "null" && cached !== "undefined") this.instanceHostname = cached;
       return this.sessionId;
     }
 
@@ -101,6 +116,8 @@ export let sfConn = {
 
   async rest(url, {logErrors = true, method = "GET", api = "normal", body = undefined, bodyType = "json", responseType = "json", headers = {}, progressHandler = null, useCache = true} = {}, rawResponse) {
     
+    
+    
        const proxyBody = {
           url: url,
           method: method,
@@ -146,8 +163,23 @@ export let sfConn = {
        }
 
        if (response.status === 204) {
-           return null;
+           return rawResponse ? { status: 204, response: null, contentType: null } : null;
        }
+       
+       // Get the content-type header for format detection
+       const contentType = response.headers.get('content-type') || '';
+       
+       // For raw responses, we need to handle both JSON and text (XML) responses
+       if (rawResponse) {
+           // Check if it's XML/text response based on content-type
+           if (contentType.includes('xml') || contentType.includes('text/plain')) {
+               const text = await response.text();
+               return { status: response.status, response: text, contentType: contentType };
+           }
+           const json = await response.json();
+           return { status: response.status, response: json, contentType: contentType };
+       }
+       
        const json = await response.json();
        return json;
   },

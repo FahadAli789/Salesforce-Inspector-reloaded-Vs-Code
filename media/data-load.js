@@ -145,18 +145,24 @@ function renderCell(rt, cell, td) {
       let {objectTypes, recordId} = recordInfo();
       let objectType = undefined;
       function setLinks(linkOptions = {isCopy: true, isQueryRecord: true, isShowAllData: true, isViewInSalesforce: true}) {
+        let currentParams = new URLSearchParams(window.location.search);
+        let rawHost = (rt.sfHost && rt.sfHost !== "null") ? rt.sfHost : null;
+        let paramHost = currentParams.get("host");
+        if (paramHost === "null") paramHost = null;
+        let effectiveHost = rawHost || paramHost || sfConn.instanceHostname || localStorage.getItem("vscode_proxy_host");
+
         // Show All Data link
-        if (linkOptions.isShowAllData) {
+        // Allow link if we have a valid objectType OR a valid recordId
+        // If objectType is missing, inspect.js will try to resolve it using recordId
+        if (linkOptions.isShowAllData && ((objectType && objectType !== "null" && objectType !== "undefined") || (recordId && isRecordId(recordId)))) {
           let liShow = document.createElement("li");
           liShow.className = "slds-dropdown__item sfir-justify-left";
           ul.appendChild(liShow);
           let aShow = document.createElement("a");
-          let currentParams = new URLSearchParams(window.location.search);
-          let effectiveHost = rt.sfHost || currentParams.get("host");
-
+          
           let args = new URLSearchParams();
           args.set("host", effectiveHost);
-          args.set("objectType", objectType);
+          args.set("objectType", objectType || "null");
           if (rt.isTooling) {
             args.set("useToolingApi", "1");
           }
@@ -178,7 +184,7 @@ function renderCell(rt, cell, td) {
         }
 
         // Query Record link
-        if (linkOptions.isQueryRecord) {
+        if (linkOptions.isQueryRecord && objectType && objectType !== "null" && objectType !== "undefined") {
           let liQuery = document.createElement("li");
           liQuery.className = "slds-dropdown__item sfir-justify-left";
           ul.appendChild(liQuery);
@@ -189,7 +195,7 @@ function renderCell(rt, cell, td) {
             queryArgs.set("useToolingApi", "1");
           }
           let qParams = new URLSearchParams(window.location.search);
-          queryArgs.set("host", rt.sfHost || qParams.get("host"));
+          queryArgs.set("host", effectiveHost);
           queryArgs.set("query", query);
           if (qParams.get("proxy")) {
             queryArgs.set("proxy", "true");
@@ -206,15 +212,15 @@ function renderCell(rt, cell, td) {
         }
 
         // View in Salesforce link
-        if (linkOptions.isViewInSalesforce && recordId && isRecordId(recordId) && !recordId.endsWith("0000000000AAA")) {
+        if (linkOptions.isViewInSalesforce && recordId && isRecordId(recordId) && !recordId.endsWith("0000000000AAA") && effectiveHost && effectiveHost !== "null") {
           let liView = document.createElement("li");
           liView.className = "slds-dropdown__item sfir-justify-left";
           ul.appendChild(liView);
           let aView = document.createElement("a");
-          aView.href = "https://" + rt.sfHost + "/" + recordId;
+          aView.href = "https://" + effectiveHost + "/" + recordId;
           //debug log specific link
           if (recordId.startsWith("07L")) {
-            aView.href = "https://" + rt.sfHost + "/one/one.app#/alohaRedirect/p/setup/layout/ApexDebugLogDetailEdit/d?apex_log_id=" + recordId;
+            aView.href = "https://" + effectiveHost + "/one/one.app#/alohaRedirect/p/setup/layout/ApexDebugLogDetailEdit/d?apex_log_id=" + recordId;
           }
           aView.target = "_blank";
           aView.textContent = "View in Salesforce";
@@ -283,12 +289,28 @@ function renderCell(rt, cell, td) {
         setLinks(defaultOptions);
       } else if (recordId && isRecordId(recordId)) {
         sfConn.rest(`/services/data/v${apiVersion}/ui-api/records/${recordId}?layoutTypes=Compact`).then(res => {
-          objectType = res.apiName;
+          if (res && res.apiName && res.apiName !== "null") {
+              objectType = res.apiName;
+          } else {
+              objectType = null;
+          }
           setLinks(defaultOptions);
         }).catch(() => {
-          objectType = null;
-          defaultOptions.isQueryRecord = false;
-          defaultOptions.isShowAllData = false;
+          // If UI-API fails (e.g. invalid session or no access), try to find object type from prefix using global describe
+          let {globalDescribe} = rt.describeInfo.describeGlobal(rt.isTooling);
+          if (globalDescribe) {
+             let keyPrefix = recordId.substring(0, 3);
+             let found = globalDescribe.sobjects.find(sobject => sobject.keyPrefix == keyPrefix);
+             if (found) {
+                 objectType = found.name;
+             }
+          }
+          
+          if (!objectType) {
+             objectType = null;
+             defaultOptions.isQueryRecord = false;
+             defaultOptions.isShowAllData = false;
+          }
           setLinks(defaultOptions);
         });
       } else {
@@ -337,6 +359,10 @@ function renderCell(rt, cell, td) {
         let recordId = null;
         if (cell.attributes.url) {
           recordId = cell.attributes.url.replace(/.*\//, "");
+        }
+        // Fallback: use Id field directly if url is missing (common in some proxy responses or custom queries)
+        if (!recordId && cell.Id) {
+            recordId = cell.Id;
         }
         let objectTypes = [cell.attributes.type];
         return {objectTypes, recordId};

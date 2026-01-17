@@ -38,7 +38,7 @@ class Toast extends React.Component {
         title: "Description of icon when needed"
       },
       h("svg", {className: "slds-icon slds-icon_small", "aria-hidden": "true"},
-        h("use", {xlinkHref: `symbols.svg#${variant === "success" ? "success" : variant === "error" ? "error" : "info"}`})
+        h("use", {xlinkHref: `#${variant === "success" ? "success" : variant === "error" ? "error" : "info"}`})
       )
       ),
       h("div", {className: "slds-notify__content"},
@@ -52,7 +52,7 @@ class Toast extends React.Component {
           onClick: onClose
         },
         h("svg", {className: "slds-button__icon slds-button__icon_large", "aria-hidden": "true"},
-          h("use", {xlinkHref: "symbols.svg#close"})
+          h("use", {xlinkHref: "#close"})
         ),
         h("span", {className: "slds-assistive-text"}, "Close")
         )

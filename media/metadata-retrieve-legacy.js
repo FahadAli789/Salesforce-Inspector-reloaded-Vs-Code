@@ -326,6 +326,10 @@ class ObjectSelector extends React.Component {
   initButton(sfHost, true);
   sfConn.getSession(sfHost).then(() => {
 
+    if (!sfHost) {
+      sfHost = sfConn.instanceHostname;
+    }
+
     let root = document.getElementById("root");
     let model = new Model(sfHost);
     model.startLoading();

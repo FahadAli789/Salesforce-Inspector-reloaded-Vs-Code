@@ -2,6 +2,9 @@
 import {sfConn, apiVersion} from "./inspector.js";
 import {PageHeader} from "./components/PageHeader.js";
 import {UserInfoModel, createSpinForMethod} from "./utils.js";
+import {loadSymbols} from "./svg-loader.js";
+
+loadSymbols();
 
 let h = React.createElement;
 
@@ -779,7 +782,7 @@ class FieldRow extends React.Component {
           className: "slds-button slds-icon_x-small slds-icon-text-default slds-m-top_xxx-small width20px",
           viewBox: "0 0 52 52"
         },
-        h("use", {xlinkHref: "symbols.svg#clock", className: "fillBlue"})
+        h("use", {xlinkHref: "#clock", className: "fillBlue"})
         );
         break;
       case "success":
@@ -787,7 +790,7 @@ class FieldRow extends React.Component {
           className: "slds-button slds-icon_x-small slds-icon-text-default slds-m-top_xxx-small width20px",
           viewBox: "0 0 52 52"
         },
-        h("use", {xlinkHref: "symbols.svg#success", className: "fillGreen"})
+        h("use", {xlinkHref: "#success", className: "fillGreen"})
         );
         break;
       case "error":
@@ -795,7 +798,7 @@ class FieldRow extends React.Component {
           className: "slds-button slds-icon_x-small slds-icon-text-default slds-m-top_xxx-small width20px",
           viewBox: "0 0 52 52"
         },
-        h("use", {xlinkHref: "symbols.svg#error", className: "fillRed"})
+        h("use", {xlinkHref: "#error", className: "fillRed"})
         );
         break;
       default:
@@ -811,7 +814,7 @@ class FieldRow extends React.Component {
               viewBox: "0 0 52 52",
               onClick: () => this.props.onClone(this.props.index)
             },
-            h("use", {xlinkHref: "symbols.svg#clone", className: "fillBlue"})
+            h("use", {xlinkHref: "#clone", className: "fillBlue"})
             )
           )
         ),
@@ -822,7 +825,7 @@ class FieldRow extends React.Component {
               viewBox: "0 0 52 52",
               onClick: () => this.props.onDelete(this.props.index)
             },
-            h("use", {xlinkHref: "symbols.svg#delete", className: "fillGray"})
+            h("use", {xlinkHref: "#delete", className: "fillGray"})
             )
           )
         ),
@@ -1670,7 +1673,7 @@ class App extends React.Component {
             className: "slds-button slds-button_icon slds-button_icon-border-filled"
           },
           h("svg", {className: "slds-button__icon", "aria-hidden": "true"},
-            h("use", {xlinkHref: "symbols.svg#question"})
+            h("use", {xlinkHref: "#question"})
           )
           )
           )
@@ -1807,7 +1810,7 @@ class App extends React.Component {
         h("div", {className: "slds-notify slds-notify_toast slds-theme_error notificationContent"},
           h("span", {className: "errorIcon"},
             h("svg", {className: "slds-icon width24px height24px", "aria-hidden": "true"},
-              h("use", {xlinkHref: "symbols.svg#error", className: "iconFill"})
+              h("use", {xlinkHref: "#error", className: "iconFill"})
             )
           ),
           h("span", {className: "slds-text-heading_small"},
@@ -1829,7 +1832,7 @@ class App extends React.Component {
             className: "closeIcon"
           },
           h("svg", {className: "slds-icon width24px height24px", "aria-hidden": "true"},
-            h("use", {xlinkHref: "symbols.svg#close", className: "iconFill"})
+            h("use", {xlinkHref: "#close", className: "iconFill"})
           )
           )
         )
@@ -1842,8 +1845,13 @@ class App extends React.Component {
 let args = new URLSearchParams(location.search.slice(1));
 let sfHost = args.get("host");
 initButton(sfHost, true);
-sfConn.getSession(sfHost).then(() => {
-  let root = document.getElementById("root");
+  sfConn.getSession(sfHost).then(() => {
+
+    if (!sfHost) {
+      sfHost = sfConn.instanceHostname;
+    }
+
+    let root = document.getElementById("root");
   ReactDOM.render(
     h(App, {
       sfHost

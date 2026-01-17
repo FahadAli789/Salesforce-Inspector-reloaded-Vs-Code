@@ -2,6 +2,9 @@
 import {sfConn, apiVersion} from "./inspector.js";
 import {PageHeader} from "./components/PageHeader.js";
 import {UserInfoModel, copyToClipboard} from "./utils.js";
+import {loadSymbols} from "./svg-loader.js";
+
+loadSymbols();
 /* global initButton */
 
 class Model {
@@ -238,6 +241,10 @@ class App extends React.Component {
   let sfHost = args.get("host");
   initButton(sfHost, true);
   sfConn.getSession(sfHost).then(() => {
+
+    if (!sfHost) {
+        sfHost = sfConn.instanceHostname;
+    }
 
     let root = document.getElementById("root");
     let vm = new Model(sfHost);

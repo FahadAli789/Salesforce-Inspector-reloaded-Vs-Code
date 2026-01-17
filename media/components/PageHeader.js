@@ -95,7 +95,7 @@ export function PageHeader(props) {
                 h("span", {className: "slds-badge__icon slds-badge__icon_left"},
                   h("span", {className: "slds-icon_container slds-current-color", title: "Home"},
                     h("svg", {className: "slds-icon slds-icon_xx-small", "aria-hidden": "true"},
-                      h("use", {xlinkHref: "symbols.svg#home"})
+                      h("use", {xlinkHref: "#home"})
                     )
                   )
                 ),
@@ -156,7 +156,7 @@ export function PageHeader(props) {
                 ? h("span", {className: "slds-avatar__initials slds-avatar__initials_inverse", title: "User Error"},
                   h("span", {className: "slds-icon_container"},
                     h("svg", {className: "slds-icon slds-icon_x-small", "aria-hidden": "true", style: {fill: "var(--slds-g-color-error-1)"}},
-                      h("use", {xlinkHref: "symbols.svg#warning"})
+                      h("use", {xlinkHref: "#warning"})
                     )
                   )
                 )

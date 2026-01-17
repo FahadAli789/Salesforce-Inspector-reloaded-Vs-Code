@@ -1,10 +1,13 @@
 /* global React ReactDOM */
-import {sfConn, apiVersion} from "./inspector.js";
+import {sfConn, apiVersion, getQueryParams} from "./inspector.js";
 import {copyToClipboard} from "./utils.js";
 /* global initButton */
 import {getObjectSetupLinks, getFieldSetupLinks} from "./setup-links.js";
 import {PageHeader} from "./components/PageHeader.js";
 import {UserInfoModel} from "./utils.js";
+import {loadSymbols} from "./svg-loader.js";
+
+loadSymbols();
 
 // Constants
 const GET_FIELD_USAGE_LABEL = "Get field usage";
@@ -34,6 +37,7 @@ class Model {
     this.errorMessages = [];
     this.rowsFilter = "";
     this.useTab = "all";
+    
     this.showTableBorder = localStorage.getItem("displayInspectTableBorders") === "true";
     this.fieldRows = new FieldRowList(this);
     this.childRows = new ChildRowList(this);
@@ -57,6 +61,126 @@ class Model {
     // Initialize user info model - handles all user-related properties
     // Wrap spinFor to match the expected signature (spinFor in inspect.js takes actionName as first param)
     this.userInfoModel = new UserInfoModel((promise) => this.spinFor("retrieving user info", promise));
+  }
+
+  async resolveObjectType() {
+      console.log("[resolveObjectType] Starting resolution. sobjectName:", this.sobjectName, "recordId:", this.recordId);
+      
+      // Check if sobjectName is missing/invalid AND we have a recordId to try and resolve it with
+      if ((!this.sobjectName || this.sobjectName === "null" || this.sobjectName === "undefined") && this.recordId) {
+          console.log("[resolveObjectType] sobjectName is invalid, attempting resolution...");
+          
+          try {
+              // Try to resolve object name from record ID using UI API
+              const uiApiUrl = `/services/data/v${apiVersion}/ui-api/records/${this.recordId}?layoutTypes=Compact`;
+              console.log("[resolveObjectType] Calling UI-API:", uiApiUrl);
+              const res = await sfConn.rest(uiApiUrl);
+              console.log("[resolveObjectType] UI-API response:", res);
+              
+              if (res && res.apiName) {
+                  this.sobjectName = res.apiName;
+                  console.log("[resolveObjectType] SUCCESS - Resolved objectType via UI-API to:", this.sobjectName);
+                  return this.sobjectName; // Success!
+              } else {
+                  console.warn("[resolveObjectType] UI-API returned but no apiName. Response keys:", res ? Object.keys(res) : "null");
+              }
+          } catch (e) {
+              console.error("[resolveObjectType] UI-API call FAILED:", e.message || e);
+              // UI-API failed, proceed to fallback
+          }
+
+          // Fallback: Try global describe prefix match
+          console.log("[resolveObjectType] Attempting Global Describe prefix fallback...");
+          try {
+            let globalDesc = this.globalDescribe;
+            if (!globalDesc) {
+                 // Fetch global describe if not already cached
+                 const globalDescUrl = "/services/data/v" + apiVersion + "/" + (this.useToolingApi ? "tooling/" : "") + "sobjects/";
+                 console.log("[resolveObjectType] Fetching Global Describe:", globalDescUrl);
+                 globalDesc = await sfConn.rest(globalDescUrl);
+                 this.globalDescribe = globalDesc;
+                 console.log("[resolveObjectType] Global Describe fetched. sobjects count:", globalDesc?.sobjects?.length || 0);
+            }
+            
+            if (globalDesc && globalDesc.sobjects) {
+                const prefix = this.recordId.substring(0, 3);
+                console.log("[resolveObjectType] Looking for prefix:", prefix);
+                const found = globalDesc.sobjects.find(so => so.keyPrefix === prefix);
+                if (found) {
+                    this.sobjectName = found.name;
+                    console.log("[resolveObjectType] SUCCESS - Resolved objectType from prefix to:", this.sobjectName);
+                } else {
+                     console.warn("[resolveObjectType] No sobject found with keyPrefix:", prefix);
+                     // Log some sample prefixes for debugging
+                     const samplePrefixes = globalDesc.sobjects.slice(0, 10).map(so => `${so.name}:${so.keyPrefix}`);
+                     console.log("[resolveObjectType] Sample prefixes from global describe:", samplePrefixes);
+                }
+            } else {
+                console.error("[resolveObjectType] Global Describe has no sobjects array");
+            }
+          } catch (e2) {
+              console.error("[resolveObjectType] Global Describe fallback FAILED:", e2.message || e2);
+          }
+      } else {
+          console.log("[resolveObjectType] No resolution needed. sobjectName:", this.sobjectName);
+      }
+      
+      console.log("[resolveObjectType] Final sobjectName:", this.sobjectName);
+      return this.sobjectName;
+  }
+  
+  async startLoading() {
+    await this.resolveObjectType();
+    
+    if (!this.sobjectName || this.sobjectName === "null") {
+        this.errorMessages.push("Object type is missing or invalid. Cannot describe object.");
+        this.didUpdate();
+        return;
+    }
+
+    // Fetch id prefix to object name mapping
+    this.spinFor("describing global", sfConn.rest("/services/data/v" + apiVersion + "/" + (this.useToolingApi ? "tooling/" : "") + "sobjects/").then(globalDescribe => {
+      this.globalDescribe = globalDescribe;
+    }));
+
+    // Fetch object data using object describe call
+    this.sobjectDescribePromise = sfConn.rest("/services/data/v" + apiVersion + "/" + (this.useToolingApi ? "tooling/" : "") + "sobjects/" + this.sobjectName + "/describe/");
+    this.spinFor("describing object", this.sobjectDescribePromise.then(sobjectDescribe => {
+      // Display the retrieved object data
+      this.objectData = sobjectDescribe;
+      for (let fieldDescribe of sobjectDescribe.fields) {
+        this.fieldRows.getRow(fieldDescribe.name).fieldDescribe = fieldDescribe;
+      }
+      this.fieldRows.resortRows();
+      for (let childDescribe of sobjectDescribe.childRelationships) {
+        this.childRows.getRow(childDescribe.relationshipName).childDescribe = childDescribe;
+      }
+      this.childRows.resortRows();
+    }));
+
+    // Fetch record data using record retrieve call
+    if (this.recordId) {
+      this.setRecordData(sfConn.rest("/services/data/v" + apiVersion + "/" + (this.useToolingApi ? "tooling/" : "") + "sobjects/" + this.sobjectName + "/" + this.recordId));
+    }
+
+    // Fetch fields using a Tooling API call, which returns fields not readable by the current user, but fails if the user does not have access to the Tooling API.
+    // We would like to query all meta-fields, to show them when the user clicks a field for more details.
+    // But, the more meta-fields we query, the more likely the query is to fail, and the meta-fields that cause failure vary depending on the entity we query, the org we are in, and the current Salesforce release.
+    // Therefore we query the minimum set of meta-fields needed by our main UI.
+    this.spinFor(
+      "querying tooling particles",
+      sfConn.rest("/services/data/v" + apiVersion + "/tooling/query/?q=" + encodeURIComponent("SELECT QualifiedApiName, Label, DataType, ReferenceTo, Length, Precision, Scale, IsAutonumber, IsCaseSensitive, IsDependentPicklist, IsEncrypted, IsIdLookup, IsHtmlFormatted, IsNillable, IsUnique, IsCalculated, InlineHelpText, FieldDefinition.DurableId, EntityDefinition.DurableId FROM EntityParticle WHERE EntityDefinition.QualifiedApiName = '" + this.sobjectName + "'")).then(res => {
+        for (let entityParticle of res.records) {
+          this.fieldRows.getRow(entityParticle.QualifiedApiName).entityParticle = entityParticle;
+          if (!this.entityDefinitionDurableId){
+            this.entityDefinitionDurableId = entityParticle.EntityDefinition.DurableId;
+          }
+        }
+        this.hasEntityParticles = true;
+        this.fieldRows.resortRows();
+      })
+    );
+
   }
   /**
    * Notify React that we changed something, so it will rerender the view.
@@ -359,52 +483,7 @@ class Model {
     this.recordData = null;
     this.layoutInfo = null;
   }
-  startLoading() {
 
-    // Fetch id prefix to object name mapping
-    this.spinFor("describing global", sfConn.rest("/services/data/v" + apiVersion + "/" + (this.useToolingApi ? "tooling/" : "") + "sobjects/").then(globalDescribe => {
-      this.globalDescribe = globalDescribe;
-    }));
-
-    // Fetch object data using object describe call
-    this.sobjectDescribePromise = sfConn.rest("/services/data/v" + apiVersion + "/" + (this.useToolingApi ? "tooling/" : "") + "sobjects/" + this.sobjectName + "/describe/");
-    this.spinFor("describing object", this.sobjectDescribePromise.then(sobjectDescribe => {
-      // Display the retrieved object data
-      this.objectData = sobjectDescribe;
-      for (let fieldDescribe of sobjectDescribe.fields) {
-        this.fieldRows.getRow(fieldDescribe.name).fieldDescribe = fieldDescribe;
-      }
-      this.fieldRows.resortRows();
-      for (let childDescribe of sobjectDescribe.childRelationships) {
-        this.childRows.getRow(childDescribe.relationshipName).childDescribe = childDescribe;
-      }
-      this.childRows.resortRows();
-    }));
-
-    // Fetch record data using record retrieve call
-    if (this.recordId) {
-      this.setRecordData(sfConn.rest("/services/data/v" + apiVersion + "/" + (this.useToolingApi ? "tooling/" : "") + "sobjects/" + this.sobjectName + "/" + this.recordId));
-    }
-
-    // Fetch fields using a Tooling API call, which returns fields not readable by the current user, but fails if the user does not have access to the Tooling API.
-    // We would like to query all meta-fields, to show them when the user clicks a field for more details.
-    // But, the more meta-fields we query, the more likely the query is to fail, and the meta-fields that cause failure vary depending on the entity we query, the org we are in, and the current Salesforce release.
-    // Therefore we query the minimum set of meta-fields needed by our main UI.
-    this.spinFor(
-      "querying tooling particles",
-      sfConn.rest("/services/data/v" + apiVersion + "/tooling/query/?q=" + encodeURIComponent("SELECT QualifiedApiName, Label, DataType, ReferenceTo, Length, Precision, Scale, IsAutonumber, IsCaseSensitive, IsDependentPicklist, IsEncrypted, IsIdLookup, IsHtmlFormatted, IsNillable, IsUnique, IsCalculated, InlineHelpText, FieldDefinition.DurableId, EntityDefinition.DurableId FROM EntityParticle WHERE EntityDefinition.QualifiedApiName = '" + this.sobjectName + "'")).then(res => {
-        for (let entityParticle of res.records) {
-          this.fieldRows.getRow(entityParticle.QualifiedApiName).entityParticle = entityParticle;
-          if (!this.entityDefinitionDurableId){
-            this.entityDefinitionDurableId = entityParticle.EntityDefinition.DurableId;
-          }
-        }
-        this.hasEntityParticles = true;
-        this.fieldRows.resortRows();
-      })
-    );
-
-  }
   updateShowTableBorder() {
     this.showTableBorder = !this.showTableBorder;
     localStorage.setItem("displayInspectTableBorders", this.showTableBorder); // Save to local storage
@@ -1680,12 +1759,12 @@ class App extends React.Component {
       : h("div", {className: "slds-builder-header__utilities-item slds-p-top_x-small slds-p-horizontal_x-small sfir-border-none"},
         h("div", {className: "slds-form-element__control slds-input-has-icon slds-input-has-icon_left"},
           h("svg", {className: "slds-icon slds-input__icon slds-input__icon_left slds-icon-text-default", style: {top: "40%"}},
-            h("use", {xlinkHref: "symbols.svg#search"})
+            h("use", {xlinkHref: "#search"})
           ),
           h("input", {className: "slds-input", placeholder: "Filter", value: model.rowsFilter, onChange: this.onRowsFilterInput, ref: "rowsFilter"}),
           h("a", {href: "about:blank", className: "sfir-filter-clear", onClick: this.onClearAndFocusFilter},
             h("svg", {className: "sfir-filter-clear-icon"},
-              h("use", {xlinkHref: "symbols.svg#clear"})
+              h("use", {xlinkHref: "#clear"})
             )
           )
         )
@@ -1717,7 +1796,7 @@ class App extends React.Component {
             h("div", {className: "slds-dropdown-trigger slds-dropdown-trigger_click slds-is-open slds-button_last"},
               h("button", {className: "slds-button slds-button_icon slds-button_icon-border-filled", onClick: this.onToggleObjectActions},
                 h("svg", {className: "slds-button__icon"},
-                  h("use", {xlinkHref: "symbols.svg#down"})
+                  h("use", {xlinkHref: "#down"})
                 )
               ),
               model.objectActionsOpen && h("div", {className: "slds-dropdown slds-dropdown_right slds-dropdown_actions"},
@@ -1753,7 +1832,7 @@ class App extends React.Component {
               h("div", {className: "slds-notify slds-notify_alert slds-alert_error", role: "status"},
                 h("span", {className: "slds-icon_container slds-icon-utility-error slds-m-right_small slds-no-flex slds-align-top"},
                   h("svg", {className: "slds-icon slds-icon_small", "aria-hidden": "true"},
-                    h("use", {xlinkHref: "symbols.svg#error"})
+                    h("use", {xlinkHref: "#error"})
                   )
                 ),
                 h("div", {className: "slds-notify__content"},
@@ -1827,7 +1906,7 @@ class ColumnsVisibiltyBox extends React.Component {
     let {rowList, label, content} = this.props;
     return h("span", {className: "slds-icon_container slds-icon-utility-chevrondown slds-current-color slds-m-left_small", onClick: this.onAvailableColumnsClick},
       h("svg", {className: "slds-icon slds-icon_x-small", "aria-hidden": "true"},
-        h("use", {xlinkHref: "symbols.svg#chevrondown"})
+        h("use", {xlinkHref: "#chevrondown"})
       ),
       rowList.availableColumns ? h("section", {
         className: "slds-popover slds-dynamic-menu",
@@ -1954,7 +2033,7 @@ class RowTable extends React.Component {
           h("th", {className: actionsColumn.className, tabIndex: 0},
             h("button", {className: "slds-button slds-button_icon", onClick: this.onToggleTableSettings},
               h("svg", {className: "slds-button__icon"},
-                h("use", {xlinkHref: "symbols.svg#settings"})
+                h("use", {xlinkHref: "#settings"})
               )
             ),
             this.tableSettingsOpen && h("div", {className: "slds-dropdown slds-dropdown_right"},
@@ -2119,7 +2198,7 @@ class FieldValueCell extends React.Component {
         h("textarea", {value: row.dataEditValue, onChange: this.onDataEditValueInput, onKeyDown: this.onKeyDown}),
         h("a", {href: "about:blank", onClick: this.onCancelEdit, className: "slds-button slds-button_icon slds-align-top slds-button_icon-x-small"},
           h("svg", {className: "slds-button__icon slds-button__icon_hint slds-button__icon_small"},
-            h("use", {xlinkHref: "symbols.svg#undo"})
+            h("use", {xlinkHref: "#undo"})
           )
         )
       );
@@ -2317,7 +2396,7 @@ class FieldActionsCell extends React.Component {
 
       h("button", {className: "slds-button slds-button_icon slds-button_icon-border-filled slds-button_icon-x-small", onClick: this.onToggleFieldActions},
         h("svg", {className: "slds-button__icon slds-button__icon_hint slds-button__icon_small"},
-          h("use", {xlinkHref: "symbols.svg#down"})
+          h("use", {xlinkHref: "#down"})
         ),
       ),
       row.fieldActionsOpen && h("div", {className: "slds-dropdown slds-dropdown_right"},
@@ -2367,7 +2446,7 @@ class ChildActionsCell extends React.Component {
         onClick: this.onToggleChildActions
       },
       h("svg", {className: "slds-button__icon slds-button__icon_hint slds-button__icon_small"},
-        h("use", {xlinkHref: "symbols.svg#down"})
+        h("use", {xlinkHref: "#down"})
       ),
       ),
       row.childActionsOpen && h("div", {className: "slds-dropdown slds-dropdown_right"},
@@ -2431,7 +2510,7 @@ class DetailsBox extends React.Component {
       h("div", {className: "slds-modal__container"},
         h("button", {className: "slds-button slds-button_icon slds-modal__close", onClick: this.onCloseDetailsBox},
           h("svg", {className: "slds-button__icon slds-button__icon_large", "aria-hidden": "true"},
-            h("use", {xlinkHref: "symbols.svg#close"})
+            h("use", {xlinkHref: "#close"})
           ),
           h("span", {className: "slds-assistive-text"}, "Cancel and close")
         ),
@@ -2467,11 +2546,16 @@ class DetailsBox extends React.Component {
 
 {
 
-  let args = new URLSearchParams(location.search.slice(1));
+  console.log("[inspect.js] Initializing...");
+  
+  // Use the helper function that handles VS Code webview context
+  let args = getQueryParams();
+  console.log("[inspect.js] URL args parsed:", Object.fromEntries(args.entries()));
+  
   let sfHost = args.get("host");
   
   // If we are in proxy mode and host is missing/placeholder, try to recover it
-  if ((!sfHost || sfHost === "VSCodeProxy") && args.get("proxy")) {
+  if ((!sfHost || sfHost === "VSCodeProxy" || sfHost === "null") && args.get("proxy")) {
       // Try to find a stored host from a previous session or context
       // Note: This is a hacky fallback.Ideally the opening link should HAVE the host.
       // But sfConn.getSession might be able to fix it if updated.
@@ -2481,8 +2565,13 @@ class DetailsBox extends React.Component {
   sfConn.getSession(sfHost).then(() => {
     
     // If sfConn recovered the hostname (e.g. via its own logic or fallback), use it
-    if (sfConn.instanceHostname && sfConn.instanceHostname !== "VSCodeProxy") {
+    if (sfConn.instanceHostname && sfConn.instanceHostname !== "VSCodeProxy" && sfConn.instanceHostname !== "null") {
         sfHost = sfConn.instanceHostname;
+    }
+
+    if (!sfHost || sfHost === "null" || sfHost === "undefined") {
+       // Last resort fallback
+       sfHost = "";
     }
 
     let root = document.getElementById("root");
@@ -2490,6 +2579,9 @@ class DetailsBox extends React.Component {
     model.sobjectName = args.get("objectType");
     model.useToolingApi = args.has("useToolingApi");
     model.recordId = args.get("recordId");
+    
+    console.log("[inspect.js] Model initialized with - sobjectName:", model.sobjectName, "recordId:", model.recordId, "host:", sfHost);
+    
     model.startLoading();
     model.reactCallback = cb => {
       ReactDOM.render(h(App, {model}), root, cb);
@@ -2574,7 +2666,7 @@ class HeaderCellWithAction extends React.Component {
         disabled: this.state.clicked
       },
       h("svg", {className: "slds-button__icon slds-button__icon_medium"},
-        h("use", {xlinkHref: `symbols.svg#${actionIcon}`})
+        h("use", {xlinkHref: `#${actionIcon}`})
       )
       )
     );

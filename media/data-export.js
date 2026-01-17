@@ -4,6 +4,9 @@ import {getLinkTarget, nullToEmptyString, displayButton, PromptTemplate, Constan
 /* global initButton */
 import {Enumerable, DescribeInfo, initScrollTable, s} from "./data-load.js";
 import {PageHeader} from "./components/PageHeader.js";
+import {loadSymbols} from "./svg-loader.js";
+
+loadSymbols();
 
 class QueryHistory {
   constructor(storageKey, max) {
@@ -1755,7 +1758,7 @@ class App extends React.Component {
         onClick: this.onToggleAI
       },
       h("svg", {className: "slds-button__icon", "aria-hidden": "true"},
-        h("use", {xlinkHref: "symbols.svg#einstein"})
+        h("use", {xlinkHref: "#einstein"})
       )
       )
       ),
@@ -1770,7 +1773,7 @@ class App extends React.Component {
         onClick: this.onToggleHelp
       },
       h("svg", {className: "slds-button__icon", "aria-hidden": "true"},
-        h("use", {xlinkHref: "symbols.svg#help"})
+        h("use", {xlinkHref: "#help"})
       )
       )
       )
@@ -2005,12 +2008,12 @@ class App extends React.Component {
                 h("button", {className: "slds-button slds-button_neutral", disabled: !model.canCopy(), onClick: this.onCopyAsJson, title: "Copy raw API output to clipboard"}, "Copy (JSON)"),
                 h("button", {className: "slds-button slds-button_neutral", disabled: !model.canCopy(), onClick: this.onDownloadAsCsv, title: "Download as a CSV file"},
                   h("svg", {className: "slds-button__icon"},
-                    h("use", {xlinkHref: "symbols.svg#download"})
+                    h("use", {xlinkHref: "#download"})
                   )
                 ),
                 h("button", {className: "slds-button slds-button_neutral", disabled: !model.canCopy(), onClick: this.onPrefHideRelationsChange, title: `${model.prefHideRelations ? "Show" : "Hide"} Object Columns`},
                   h("svg", {className: `slds-button__icon ${model.prefHideRelations ? "" : "disabled"}`},
-                    h("use", {xlinkHref: "symbols.svg#hide"})
+                    h("use", {xlinkHref: "#hide"})
                   )
                 ),
                 displayButton("delete", this.state.hideButtonsOption)
@@ -2092,6 +2095,10 @@ class App extends React.Component {
   }
   initButton(sfHost, true);
   sfConn.getSession(sfHost).then(() => {
+
+    if (!sfHost || sfHost === "null") {
+        sfHost = sfConn.instanceHostname;
+    }
 
     let root = document.getElementById("root");
     let model = new Model({sfHost, args});

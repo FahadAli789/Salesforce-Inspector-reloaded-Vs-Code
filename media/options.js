@@ -8,6 +8,9 @@ import Toast from "./components/Toast.js";
 import Tooltip from "./components/Tooltip.js";
 import ColorPicker from "./components/ColorPicker.js";
 import {PageHeader} from "./components/PageHeader.js";
+import {loadSymbols} from "./svg-loader.js";
+
+loadSymbols();
 
 class Model {
 
@@ -423,7 +426,7 @@ class OptionsContainer extends React.Component {
                   onClick: button.method,
                   title: button.title
                 }, h("svg", {className: "slds-button__icon"},
-                  h("use", {xlinkHref: `symbols.svg#${button.icon}`})
+                  h("use", {xlinkHref: `#${button.icon}`})
                 ));
               }
               return h("button", {
@@ -1418,7 +1421,7 @@ class CustomShortcuts extends React.Component {
           h("div", {className: "slds-form-element"},
             h("div", {className: "slds-form-element__control slds-input-has-icon slds-input-has-icon_left"},
               h("svg", {className: "slds-input__icon slds-input__icon_left slds-icon-text-default", "aria-hidden": true},
-                h("use", {xlinkHref: "symbols.svg#search"})
+                h("use", {xlinkHref: "#search"})
               ),
               h("input", {
                 type: "search",
@@ -1443,7 +1446,7 @@ class CustomShortcuts extends React.Component {
               h("span", {}, "Label"),
               this.getSortIcon("label") && h("span", {className: "slds-icon_container slds-icon-utility-" + this.getSortIcon("label")},
                 h("svg", {className: "slds-icon slds-icon_x-small slds-icon-text-default", "aria-hidden": true},
-                  h("use", {xlinkHref: "symbols.svg#" + this.getSortIcon("label")})
+                  h("use", {xlinkHref: "#" + this.getSortIcon("label")})
                 )
               )
             )
@@ -1457,7 +1460,7 @@ class CustomShortcuts extends React.Component {
               h("span", {}, "Link"),
               this.getSortIcon("link") && h("span", {className: "slds-icon_container slds-icon-utility-" + this.getSortIcon("link")},
                 h("svg", {className: "slds-icon slds-icon_x-small slds-icon-text-default", "aria-hidden": true},
-                  h("use", {xlinkHref: "symbols.svg#" + this.getSortIcon("link")})
+                  h("use", {xlinkHref: "#" + this.getSortIcon("link")})
                 )
               )
             )
@@ -1471,7 +1474,7 @@ class CustomShortcuts extends React.Component {
               h("span", {}, "Section"),
               this.getSortIcon("section") && h("span", {className: "slds-icon_container slds-icon-utility-" + this.getSortIcon("section")},
                 h("svg", {className: "slds-icon slds-icon_x-small slds-icon-text-default", "aria-hidden": true},
-                  h("use", {xlinkHref: "symbols.svg#" + this.getSortIcon("section")})
+                  h("use", {xlinkHref: "#" + this.getSortIcon("section")})
                 )
               )
             )
@@ -1524,7 +1527,7 @@ class CustomShortcuts extends React.Component {
               h("td", {key: "external", "data-label": "External"},
                 h("div", {className: "slds-truncate"},
                   newShortcut.isExternal && h("svg", {className: "slds-button__icon"},
-                    h("use", {xlinkHref: "symbols.svg#check"})
+                    h("use", {xlinkHref: "#check"})
                   )
                 )
               ),
@@ -1535,14 +1538,14 @@ class CustomShortcuts extends React.Component {
                     onClick: this.onSaveShortcut,
                     title: "Save"
                   }, h("svg", {className: "slds-button__icon"},
-                    h("use", {xlinkHref: "symbols.svg#check"})
+                    h("use", {xlinkHref: "#check"})
                   )),
                   h("button", {
                     className: "slds-button slds-button_icon slds-button_icon-border-filled",
                     onClick: this.onCancelEdit,
                     title: "Cancel"
                   }, h("svg", {className: "slds-button__icon"},
-                    h("use", {xlinkHref: "symbols.svg#close"})
+                    h("use", {xlinkHref: "#close"})
                   ))
                 )
               )
@@ -1559,7 +1562,7 @@ class CustomShortcuts extends React.Component {
               h("td", {key: "external", "data-label": "External"},
                 h("div", {className: "slds-truncate"},
                   shortcut.isExternal && h("svg", {className: "slds-button__icon"},
-                    h("use", {xlinkHref: "symbols.svg#check"})
+                    h("use", {xlinkHref: "#check"})
                   )
                 )
               ),
@@ -1570,14 +1573,14 @@ class CustomShortcuts extends React.Component {
                     onClick: () => this.onEditShortcut(index),
                     title: "Edit"
                   }, h("svg", {className: "slds-button__icon"},
-                    h("use", {xlinkHref: "symbols.svg#edit"})
+                    h("use", {xlinkHref: "#edit"})
                   )),
                   h("button", {
                     className: "slds-button slds-button_icon slds-button_icon-border-filled",
                     onClick: () => this.onDeleteShortcut(index),
                     title: "Delete"
                   }, h("svg", {className: "slds-button__icon"},
-                    h("use", {xlinkHref: "symbols.svg#delete"})
+                    h("use", {xlinkHref: "#delete"})
                   ))
                 )
               )
@@ -1593,7 +1596,7 @@ class CustomShortcuts extends React.Component {
             onClick: this.onAddShortcut,
             title: "Add Shortcut"
           }, h("svg", {className: "slds-button__icon"},
-            h("use", {xlinkHref: "symbols.svg#add"})
+            h("use", {xlinkHref: "#add"})
           ))
         )
       )
@@ -1902,7 +1905,7 @@ class App extends React.Component {
       h("div", {className: "slds-builder-header__utilities-item slds-p-top_x-small slds-p-horizontal_x-small sfir-border-none"},
         h("button", {className: "slds-button slds-button_icon slds-button_icon-border-filled", onClick: () => this.exportOptions(), title: "Export Options"},
           h("svg", {className: "slds-button__icon"},
-            h("use", {xlinkHref: "symbols.svg#download"})
+            h("use", {xlinkHref: "#download"})
           )
         )
       ),
@@ -1914,7 +1917,7 @@ class App extends React.Component {
           title: "Import Options"
         },
         h("svg", {className: "slds-button__icon"},
-          h("use", {xlinkHref: "symbols.svg#upload"})
+          h("use", {xlinkHref: "#upload"})
         )
         ),
         // Hidden file input for importing options

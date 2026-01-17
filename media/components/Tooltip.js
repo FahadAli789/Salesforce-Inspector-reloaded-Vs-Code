@@ -59,7 +59,7 @@ class Tooltip extends React.Component {
       h("a", {href: "#", onClick: this.onClick, onMouseEnter: this.onHover, onMouseLeave: this.onHide},
         h("span", {className: "slds-icon_container slds-icon-utility-info"},
           h("svg", {className: "slds-icon_xx-small slds-icon-text-default", viewBox: "0 0 40 40", style: {verticalAlign: "unset", margin: "3px"}},
-            h("use", {xlinkHref: "symbols.svg#info", fill: "#9c9c9c"}),
+            h("use", {xlinkHref: "#info", fill: "#9c9c9c"}),
           )),
         h("span", {className: "slds-assistive-text"}, "Learn more")
       ),

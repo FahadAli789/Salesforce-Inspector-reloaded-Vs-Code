@@ -3,6 +3,9 @@ import {sfConn, apiVersion, sessionError} from "./inspector.js";
 import {getLinkTarget, displayButton, getLatestApiVersionFromOrg, setOrgInfo, getPKCEParameters, getBrowserType, getExtensionId, getClientId, getRedirectUri, Constants, copyToClipboard} from "./utils.js";
 import {setupLinks} from "./links.js";
 import AlertBanner from "./components/AlertBanner.js";
+import {loadSymbols} from "./svg-loader.js";
+
+loadSymbols();
 
 let p = parent;
 let hideButtonsOption = JSON.parse(localStorage.getItem("hideButtonsOption"));
@@ -26,28 +29,37 @@ if (typeof browser === "undefined") {
 {
   // VS Code Proxy Mode Initialization
   const urlParams = new URLSearchParams(window.location.search);
-  if (urlParams.get("proxy")) {
+  
+  // Robust check: explicitly look for our injected VSCode API or the proxy param
+  const isVSCodeProxy = urlParams.get("proxy") || (window.vscode !== undefined);
+
+  if (isVSCodeProxy) {
      let hostParam = urlParams.get("host");
-     // If host is effectively missing in proxy mode, try to recover it
+     // If host is effectively missing, try to recover it from potential injection
      if (!hostParam || hostParam === "VSCodeProxy") {
-         // Try to find ANY stored host from a previous session context or localStorage pattern
-         // This is a last-ditch effort for the popup entry point
-         // We can try to look for keys ending in _isSandbox to find a known host
-         const knownHost = Object.keys(localStorage).find(k => k.endsWith("_isSandbox"))?.split("_")[0];
-         if (knownHost) {
-             hostParam = knownHost;
-             console.log("VSCodeProxy: Recovered host from storage:", hostParam);
+         // Check if we injected it via global from extension
+         if (window.__initialHost) {
+             hostParam = window.__initialHost;
+         } else {
+            const knownHost = Object.keys(localStorage).find(k => k.endsWith("_isSandbox"))?.split("_")[0];
+            if (knownHost) hostParam = knownHost;
          }
      }
+     
+     console.log("[popup.js] Initializing in Proxy Mode. Host:", hostParam);
 
      init({
-         sfHost: hostParam,
+         sfHost: hostParam || "VSCodeProxy",
          inDevConsole: false,
          inLightning: false,
          inInspector: true
      });
+     
+     // Also initialize links immediately
+     initLinks({ sfHost: hostParam || "VSCodeProxy" });
+
   } else {
-      // Original Message Handshake
+      // Original Message Handshake (likely never reached in VS Code env now)
       parent.postMessage(
         {
           insextInitRequest: true,
@@ -302,6 +314,11 @@ class App extends React.PureComponent {
     });
   }
   onShortcutKey(e) {
+    // Don't intercept shortcuts when typing in input fields
+    const eventTarget = e.target;
+    if (eventTarget.tagName === 'INPUT' || eventTarget.tagName === 'TEXTAREA' || eventTarget.isContentEditable) {
+      return;
+    }
     const refs = this.refs;
     const actionMap = {
       a: ["all", "clickAllDataBtn"],
@@ -856,7 +873,7 @@ class App extends React.PureComponent {
                   viewBox: "0 0 52 52",
                 },
                 h("use", {
-                  xlinkHref: "symbols.svg#type",
+                  xlinkHref: "#type",
                   style: {fill: "#9c9c9c"},
                 })
               )
@@ -883,7 +900,7 @@ class App extends React.PureComponent {
                   viewBox: "0 0 52 52",
                 },
                 h("use", {
-                  xlinkHref: "symbols.svg#heart",
+                  xlinkHref: "#heart",
                   style: {fill: "#9c9c9c"},
                 })
               )
@@ -910,7 +927,7 @@ class App extends React.PureComponent {
                   viewBox: "0 0 52 52",
                 },
                 h("use", {
-                  xlinkHref: "symbols.svg#info_alt",
+                  xlinkHref: "#info_alt",
                   style: {fill: "#9c9c9c"},
                 })
               )
@@ -939,7 +956,7 @@ class App extends React.PureComponent {
                   viewBox: "0 0 52 52",
                 },
                 h("use", {
-                  xlinkHref: "symbols.svg#settings",
+                  xlinkHref: "#settings",
                   style: {fill: "#9c9c9c"},
                 })
               )
@@ -1847,14 +1864,26 @@ class AllDataBoxSObject extends React.PureComponent {
       let objectsForId = sobjectsList.filter(
         (sobject) => sobject.keyPrefix == queryKeyPrefix
       );
-      for (let sobject of objectsForId) {
-        res.unshift({recordId: query, sobject, relevance: 1});
+      console.log("[getMatches] Query looks like recordId. Prefix:", queryKeyPrefix, "Found objects:", objectsForId.length);
+      if (objectsForId.length > 0) {
+        for (let sobject of objectsForId) {
+          res.unshift({recordId: query, sobject, relevance: 1});
+        }
+      } else {
+        // Fallback: If no object matches the prefix, still allow selecting the ID
+        // inspect.js will attempt to resolve the object type
+        console.log("[getMatches] No sobject found for prefix. Creating fallback entry with recordId:", query);
+        res.unshift({
+            recordId: query,
+            sobject: { name: null, label: "Unknown Object", keyPrefix: queryKeyPrefix, availableApis: [] },
+            relevance: 1
+        });
       }
     }
     res.sort(
       (a, b) =>
         a.relevance - b.relevance
-        || a.sobject.name.localeCompare(b.sobject.name)
+        || (a.sobject.name || "").localeCompare(b.sobject.name || "")
     );
     return res;
   }
@@ -1890,8 +1919,8 @@ class AllDataBoxSObject extends React.PureComponent {
   }
 
   resultRender(matches, userQuery) {
-    return matches.map((value) => ({
-      key: value.recordId + "#" + value.sobject.name,
+    return matches.map((value, index) => ({
+      key: (value.recordId || 'obj') + "#" + (value.sobject?.name || 'unknown') + "_" + index,
       value,
       element: [
         h(
@@ -3367,7 +3396,7 @@ class UserDetails extends React.PureComponent {
                       onMouseLeave: (e) => e.stopPropagation()
                     },
                     h("svg", {className: "slds-button__icon slds-m-left_xx-small sfir-vertical-align_sub"},
-                      h("use", {xlinkHref: "symbols.svg#copy"})
+                      h("use", {xlinkHref: "#copy"})
                     )
                     )
                     : null,
@@ -3624,7 +3653,10 @@ class AllDataSelection extends React.PureComponent {
     if (selectedValue) {
       let args = new URLSearchParams();
       args.set("host", sfHost);
-      args.set("objectType", selectedValue.sobject.name);
+      // If name is null, pass "null" string or let inspect.js handle it
+      console.log("[popup.js] getAllDataUrl selectedValue:", selectedValue);
+      console.log("[popup.js] sobject.name:", selectedValue.sobject.name);
+      args.set("objectType", selectedValue.sobject.name || "null");
       if (toolingApi) {
         args.set("useToolingApi", "1");
       }
@@ -3669,6 +3701,7 @@ class AllDataSelection extends React.PureComponent {
    * Optimistically generate lightning setup uri for the provided object api name.
    */
   getObjectSetupLink(sobjectName, durableId, isCustomSetting) {
+    if (!sobjectName) return "#";
     if (sobjectName.endsWith("__mdt")) {
       return this.getMetadataLink(durableId, "CustomMetadata");
     } else if (sobjectName.endsWith("__e")) {
@@ -3697,6 +3730,7 @@ class AllDataSelection extends React.PureComponent {
     return `https://${this.props.sfHost}/lightning/setup/${type}/page?address=%2F${durableId}%3Fsetupid%3D${type}`;
   }
   getObjectFieldsSetupLink(sobjectName, durableId, isCustomSetting) {
+    if (!sobjectName) return "#";
     if (sobjectName.endsWith("__mdt")) {
       return this.getMetadataLink(durableId, "CustomMetadata");
     } else if (isCustomSetting) {
@@ -3720,6 +3754,7 @@ class AllDataSelection extends React.PureComponent {
     }
   }
   getObjectListLink(sobjectName, keyPrefix, isCustomSetting) {
+    if (!sobjectName) return "#";
     if (sobjectName.endsWith("__mdt")) {
       return (
         "https://"
@@ -3741,6 +3776,7 @@ class AllDataSelection extends React.PureComponent {
     }
   }
   getObjectListAccess(sobjectName) {
+    if (!sobjectName) return "#";
     return (
       "https://"
       + this.props.sfHost
@@ -3750,6 +3786,7 @@ class AllDataSelection extends React.PureComponent {
     );
   }
   getRecordTypesLink(sfHost, sobjectName, durableId) {
+    if (!sobjectName) return "#";
     if (sobjectName.endsWith("__c") || sobjectName.endsWith("__kav")) {
       return (
         "https://"
@@ -3852,7 +3889,7 @@ class AllDataSelection extends React.PureComponent {
             h(
               "div",
               {className: "slds-card__body"},
-              selectedValue.sobject.isEverCreatable && displayButton("new", hideButtonsOption) && !selectedValue.sobject.name.endsWith("__e")
+              selectedValue.sobject.isEverCreatable && displayButton("new", hideButtonsOption) && selectedValue.sobject.name && !selectedValue.sobject.name.endsWith("__e")
                 ? h("a", {
                   ref: "showNewBtn",
                   href: this.getNewObjectUrl(sfHost, selectedValue.sobject.newUrl),
@@ -3928,7 +3965,7 @@ class AllDataSelection extends React.PureComponent {
                       )
                     )
                     : null,
-                  selectedValue.sobject.name.endsWith("__e")
+                  selectedValue.sobject.name && selectedValue.sobject.name.endsWith("__e")
                     ? null
                     : h(
                       "span",
@@ -3948,8 +3985,8 @@ class AllDataSelection extends React.PureComponent {
                         "List"
                       )
                     ),
-                  selectedValue.sobject.name.endsWith("__e")
-                    || selectedValue.sobject.name.endsWith("__mdt")
+                  (selectedValue.sobject.name && selectedValue.sobject.name.endsWith("__e"))
+                    || (selectedValue.sobject.name && selectedValue.sobject.name.endsWith("__mdt"))
                     ? null
                     : h(
                       "span",
@@ -3984,18 +4021,20 @@ class AllDataSelection extends React.PureComponent {
                 h(
                   "dd",
                   {className: "slds-detail"},
-                  h(
-                    "a",
-                    {
-                      href: this.getObjectDocLink(
-                        selectedValue.sobject,
-                        selectedValue.sobject.availableApis[1]
-                      ),
-                      target: linkTarget,
-                    },
-                    "Standard"
-                  ),
-                  selectedValue.sobject.availableApis.length > 1
+                  selectedValue.sobject.availableApis?.length > 0
+                    ? h(
+                      "a",
+                      {
+                        href: this.getObjectDocLink(
+                          selectedValue.sobject,
+                          selectedValue.sobject.availableApis[selectedValue.sobject.availableApis.length > 1 ? 1 : 0]
+                        ),
+                        target: linkTarget,
+                      },
+                      "Standard"
+                    )
+                    : null,
+                  selectedValue.sobject.availableApis?.length > 1
                     ? h(
                       "a",
                       {
@@ -4096,7 +4135,7 @@ class AllDataSelection extends React.PureComponent {
               : "Show all data",
             button == "regularApi"
               ? ""
-              : button == "toolingApi"
+              : !selectedValue.sobject.name ? " (Resolve)" : button == "toolingApi"
                 ? " (Tooling API)"
                 : " (Not readable)"
           )
@@ -4115,7 +4154,7 @@ class AllDataSelection extends React.PureComponent {
           h("span", {}, "Show ", h("u", {}, "f"), "ields API names")
         )
         : null,
-      false && selectedValue.sobject.name.endsWith("__e")
+      false && selectedValue.sobject.name && selectedValue.sobject.name.endsWith("__e")
         ? h(
           "a",
           {
@@ -4409,6 +4448,28 @@ class Autocomplete extends React.PureComponent {
   }
   handleFocus() {
     let {recentItems} = this.props;
+    // Clear existing items to prevent duplicates on re-focus
+    recentItems.length = 0;
+    
+    // Try to show cached results immediately
+    const cacheKey = 'recentlyViewedCache';
+    const cachedData = localStorage.getItem(cacheKey);
+    if (cachedData) {
+      try {
+        const cached = JSON.parse(cachedData);
+        this.populateRecentItems(recentItems, cached.records || []);
+        this.setState({
+          recentItems,
+          showResults: true,
+          selectedIndex: 0,
+          scrollToSelectedIndex: this.state.scrollToSelectedIndex + 1,
+        });
+      } catch (e) {
+        console.log('[handleFocus] Cache parse error:', e);
+      }
+    }
+    
+    // Fetch fresh data in background
     sfConn
       .rest(
         "/services/data/v"
@@ -4416,46 +4477,12 @@ class Autocomplete extends React.PureComponent {
           + "/query/?q=SELECT+Id,Name,Type+FROM+RecentlyViewed+LIMIT+100"
       )
       .then((res) => {
-        let itemsIds = new Set();
-        res.records.forEach((recentItem) => {
-          if (!itemsIds.has(recentItem.Id)) {
-            recentItems.push({
-              key: recentItem.Id,
-              value: {
-                recordId: recentItem.Id,
-                isRecent: true,
-                sobject: {
-                  keyPrefix: recentItem.Id.slice(0, 3),
-                  label: recentItem.Type,
-                  name: recentItem.Name,
-                },
-              },
-              element: [
-                h(
-                  "div",
-                  {className: "dropdown-item slds-wrap", key: "main"},
-                  recentItem.Name
-                ),
-                h(
-                  "div",
-                  {className: "dropdown-item slds-wrap", key: "sub"},
-                  h(MarkSubstring, {
-                    text: recentItem.Type,
-                    start: -1,
-                    length: 0,
-                  }),
-                  " • ",
-                  h(MarkSubstring, {
-                    text: recentItem.Id,
-                    start: -1,
-                    length: 0,
-                  })
-                ),
-              ],
-            });
-            itemsIds.add(recentItem.Id);
-          }
-        });
+        // Cache the results
+        localStorage.setItem(cacheKey, JSON.stringify({ records: res.records, timestamp: Date.now() }));
+        
+        // Clear and repopulate with fresh data
+        recentItems.length = 0;
+        this.populateRecentItems(recentItems, res.records);
         this.setState({
           recentItems,
           showResults: true,
@@ -4464,8 +4491,58 @@ class Autocomplete extends React.PureComponent {
         });
       });
   }
+  
+  populateRecentItems(recentItems, records) {
+    let itemsIds = new Set();
+    let itemIndex = 0;
+    records.forEach((recentItem) => {
+      if (!itemsIds.has(recentItem.Id)) {
+        recentItems.push({
+          key: recentItem.Id + '_' + (itemIndex++),
+          value: {
+            recordId: recentItem.Id,
+            isRecent: true,
+            sobject: {
+              keyPrefix: recentItem.Id.slice(0, 3),
+              label: recentItem.Type,
+              name: recentItem.Type, // Use Type as the sobject name for loading
+              availableApis: ['regularApi'], // Default to regularApi for recently viewed items
+            },
+          },
+          element: [
+            h(
+              "div",
+              {className: "dropdown-item slds-wrap", key: "main"},
+              recentItem.Name
+            ),
+            h(
+              "div",
+              {className: "dropdown-item slds-wrap", key: "sub"},
+              h(MarkSubstring, {
+                text: recentItem.Type,
+                start: -1,
+                length: 0,
+              }),
+              " • ",
+              h(MarkSubstring, {
+                text: recentItem.Id,
+                start: -1,
+                length: 0,
+              })
+            ),
+          ],
+        });
+        itemsIds.add(recentItem.Id);
+      }
+    });
+  }
   handleBlur() {
-    this.setState({showResults: false});
+    // Delay hiding to allow click events on results to fire first
+    setTimeout(() => {
+      if (!this.state.resultsMouseIsDown) {
+        this.setState({showResults: false});
+      }
+    }, 150);
   }
   handleKeyDown(e) {
     let {matchingResults} = this.props;
@@ -4530,14 +4607,16 @@ class Autocomplete extends React.PureComponent {
     this.setState({resultsMouseIsDown: false});
   }
   onResultClick(e, value) {
+    console.log('[Autocomplete] onResultClick called with value:', value);
     const {sfHost} = this.props;
 
     if (value.isRecent) {
-      this.handleNavigation(e, `https://${sfHost}/${value.recordId}`, {
-        navigationType: "recordId",
-        recordId: value.recordId,
-      });
+      // Load record data in panel instead of navigating to Salesforce
+      console.log('[Autocomplete] Loading recent item data:', value.recordId);
+      this.props.updateInput(value);
+      this.setState({showResults: false, selectedIndex: 0});
     } else if (value.link && value.Id) {
+      console.log('[Autocomplete] Navigating to link:', value.link);
       this.handleNavigation(
         e,
         `${value.isExternal ? "" : "https://" + sfHost}${value.link}`,
@@ -4547,6 +4626,7 @@ class Autocomplete extends React.PureComponent {
         }
       );
     } else {
+      console.log('[Autocomplete] Calling updateInput with value:', value);
       this.props.updateInput(value);
       this.setState({showResults: false, selectedIndex: 0});
     }
@@ -4661,7 +4741,7 @@ class Autocomplete extends React.PureComponent {
                 onMouseEnter: () =>
                   this.onResultMouseEnter(index + firstRenderedIndex),
               },
-              h("a", {className: "slds-p-horizontal_small"}, element)
+              h("div", {className: "slds-p-horizontal_small autocomplete-item-content", style: {cursor: "pointer"}}, element)
             )
           )
       )
@@ -4792,7 +4872,18 @@ function navigateWithExtensionCheck(e, url, navigationParams, target = null) {
   const linkTarget = target || getLinkTarget(e);
   closePopup();
 
-  if (
+  // Check if we're in VS Code webview context
+  const isVSCodeWebview = window.vscode !== undefined || window.openExternal !== undefined;
+  
+  if (isVSCodeWebview && url.startsWith('http')) {
+    // In VS Code webview, use openExternal to open URLs in browser
+    console.log('[navigateWithExtensionCheck] Using openExternal for:', url);
+    if (window.openExternal) {
+      window.openExternal(url);
+    } else if (window.vscode) {
+      window.vscode.postMessage({ command: 'openExternal', url: url });
+    }
+  } else if (
     linkTarget === "_blank"
     || localStorage.getItem("lightningNavigation") == "false"
     || isExtensionPage === undefined

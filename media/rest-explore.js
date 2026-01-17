@@ -4,6 +4,9 @@ import {sfConn, apiVersion} from "./inspector.js";
 import {initScrollTable} from "./data-load.js";
 import {PageHeader} from "./components/PageHeader.js";
 import {UserInfoModel, createSpinForMethod, copyToClipboard} from "./utils.js";
+import {loadSymbols} from "./svg-loader.js";
+
+loadSymbols();
 
 class QueryHistory {
   constructor(storageKey, max) {
@@ -250,9 +253,10 @@ class Model {
   }
 
   parseResponse(result, status) {
-
     this.resultClass = result.status < 300 ? "success" : result.status > 399 ? "error" : "";
-    let format = result.responseType.length > 0 ? result.responseType : "xml";
+    // Determine format from content-type header: if it contains 'xml', use xml; otherwise default to json
+    let contentType = result.contentType || "";
+    let format = contentType.includes("xml") ? "xml" : "json";
     this.apiResponse = {
       status,
       code: result.status,
@@ -555,7 +559,7 @@ class App extends React.Component {
                       h("div", {className: "slds-size_1-of-6 slds-p-horizontal_xx-small"},
                         h("div", {className: "slds-form-element__control slds-input-has-icon slds-input-has-icon_left"},
                           h("svg", {className: "slds-icon slds-input__icon slds-input__icon_left slds-icon-text-default", "aria-hidden": "true"},
-                            h("use", {xlinkHref: "symbols.svg#save"})
+                            h("use", {xlinkHref: "#save"})
                           ),
                           h("input", {className: "slds-input", placeholder: "Query Label", value: model.queryName, onInput: this.onSetQueryName})
                         )
@@ -570,7 +574,7 @@ class App extends React.Component {
                           h("div", {ref: "buttonQueryMenu", className: "slds-dropdown-trigger slds-dropdown-trigger_click slds-button_last", onClick: (event) => event.currentTarget.classList.toggle("slds-is-open")},
                             h("button", {className: "slds-button slds-button_icon slds-button_icon-border-filled"},
                               h("svg", {className: "slds-button__icon", "aria-hidden": "true"},
-                                h("use", {xlinkHref: "symbols.svg#down"})
+                                h("use", {xlinkHref: "#down"})
                               )
                             ),
                             h("div", {className: "slds-dropdown slds-dropdown_right slds-dropdown_actions"},
@@ -656,7 +660,7 @@ class App extends React.Component {
                       h("span", {className: "slds-pill__icon_container"},
                         h("span", {className: "slds-avatar slds-avatar_circle"},
                           h("svg", {className: "slds-button__icon", "aria-hidden": "true"},
-                            h("use", {xlinkHref: "symbols.svg#link"})
+                            h("use", {xlinkHref: "#link"})
                           ),
                         )
                       ),
@@ -743,6 +747,10 @@ class App extends React.Component {
   }
   initButton(sfHost, true);
   sfConn.getSession(sfHost).then(() => {
+
+    if (!sfHost) {
+      sfHost = sfConn.instanceHostname;
+    }
 
     let root = document.getElementById("root");
     let model = new Model({sfHost, args});

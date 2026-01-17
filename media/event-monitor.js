@@ -5,6 +5,9 @@ import {sfConn, apiVersion} from "./inspector.js";
 import {CometD} from "./lib/cometd/cometd.js";
 import ConfirmModal from "./components/ConfirmModal.js";
 import {PageHeader} from "./components/PageHeader.js";
+import {loadSymbols} from "./svg-loader.js";
+
+loadSymbols();
 
 const channelTypes = [
   {value: "standardPlatformEvent", label: "Standard Platform Event", prefix: "/event/"},
@@ -517,7 +520,7 @@ class App extends React.Component {
             onClick: this.onToggleMetrics
           },
           h("svg", {className: "slds-button__icon", "aria-hidden": "true"},
-            h("use", {xlinkHref: "symbols.svg#metrics"})
+            h("use", {xlinkHref: "#metrics"})
           )
           )
           ),
@@ -531,7 +534,7 @@ class App extends React.Component {
             onClick: this.onToggleHelp
           },
           h("svg", {className: "slds-button__icon", "aria-hidden": "true"},
-            h("use", {xlinkHref: "symbols.svg#question"})
+            h("use", {xlinkHref: "#question"})
           )
           )
           )
@@ -653,7 +656,7 @@ class App extends React.Component {
               h("div", {className: "slds-notify slds-notify_alert slds-theme_alert-texture slds-theme_info", style: {display: "flex", alignItems: "center"}},
                 h("span", {className: "slds-icon_container slds-icon-utility-info slds-m-right_x-small"},
                   h("svg", {className: "slds-icon slds-icon_x-small", "aria-hidden": "true"},
-                    h("use", {xlinkHref: "symbols.svg#info_alt"})
+                    h("use", {xlinkHref: "#info_alt"})
                   )
                 ),
                 h("div", {},
@@ -700,7 +703,7 @@ class App extends React.Component {
             h("div", {className: "slds-form-element slds-float_right", style: {display: "inline-block", maxWidth: "300px"}},
               h("div", {className: "slds-form-element__control slds-input-has-icon slds-input-has-icon_left-right"},
                 h("svg", {className: "slds-icon slds-input__icon slds-input__icon_left slds-icon-text-default", "aria-hidden": "true"},
-                  h("use", {xlinkHref: "symbols.svg#search"})
+                  h("use", {xlinkHref: "#search"})
                 ),
                 h("input", {
                   className: "slds-input",
@@ -716,7 +719,7 @@ class App extends React.Component {
                   onClick: this.onClearAndFocusFilter
                 },
                 h("svg", {className: "slds-button__icon slds-icon-text-light", "aria-hidden": "true"},
-                  h("use", {xlinkHref: "symbols.svg#clear"})
+                  h("use", {xlinkHref: "#clear"})
                 )
                 ) : null
               )
@@ -786,6 +789,10 @@ class App extends React.Component {
   let sfHost = args.get("host");
   initButton(sfHost, true);
   sfConn.getSession(sfHost).then((res) => {
+
+    if (!sfHost) {
+      sfHost = sfConn.instanceHostname;
+    }
 
     let root = document.getElementById("root");
     let model = new Model(sfHost, res, args);

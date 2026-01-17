@@ -5,6 +5,9 @@ import {csvParse} from "./csv-parse.js";
 import {DescribeInfo, initScrollTable} from "./data-load.js";
 import {PageHeader} from "./components/PageHeader.js";
 import {UserInfoModel, createSpinForMethod, copyToClipboard} from "./utils.js";
+import {loadSymbols} from "./svg-loader.js";
+
+loadSymbols();
 
 const allApis = [
   {value: "Enterprise", label: "Enterprise (default)"},
@@ -1154,7 +1157,7 @@ class App extends React.Component {
         onClick: this.onToggleHelpClick
       },
       h("svg", {className: "slds-button__icon", "aria-hidden": "true"},
-        h("use", {xlinkHref: "symbols.svg#question"})
+        h("use", {xlinkHref: "#question"})
       )
       )
       )
@@ -1220,7 +1223,7 @@ class App extends React.Component {
                                 h("div", {className: "slds-size_1-of-12 slds-text-align_right"},
                                   h("a", {className: "slds-button slds-button_icon slds-button_icon-border-filled", href: model.showDescribeUrl(), target: "_blank", title: "Show field info for the selected object"},
                                     h("svg", {className: "slds-button__icon", "aria-hidden": "true"},
-                                      h("use", {xlinkHref: "symbols.svg#search"})
+                                      h("use", {xlinkHref: "#search"})
                                     ),
                                   )
                                 ),
@@ -1384,7 +1387,7 @@ class App extends React.Component {
                   h(
                     "svg",
                     {className: "slds-button__icon slds-button__icon_large", "aria-hidden": "true"},
-                    h("use", {xlinkHref: "symbols.svg#close"})
+                    h("use", {xlinkHref: "#close"})
                   ),
                   h("span", {className: "slds-assistive-text"}, "Cancel and close")
                 ),
@@ -1396,7 +1399,7 @@ class App extends React.Component {
                       h("span", {className: "slds-assistive-text"}, "warning"),
                       h("span", {className: "slds-icon_container slds-icon-utility-warning slds-m-right_small slds-no-flex slds-align-top"},
                         h("svg", {className: "slds-icon slds-icon_small", "aria-hidden": "true"},
-                          h("use", {xlinkHref: "/symbols.svg#warning"})
+                          h("use", {xlinkHref: "#warning"})
                         )
                       ),
                       h("div", {className: "slds-notify__content slds-text-align_center"},
@@ -1493,6 +1496,10 @@ class StatusBox extends React.Component {
   let sfHost = args.get("host");
   initButton(sfHost, true);
   sfConn.getSession(sfHost).then(() => {
+
+    if (!sfHost) {
+        sfHost = sfConn.instanceHostname;
+    }
 
     let root = document.getElementById("root");
     let model = new Model(sfHost, args);

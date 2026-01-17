@@ -12,6 +12,9 @@ import {sfConn, apiVersion} from "./inspector.js";
 import {getLinkTarget, getUserInfo, displayButton, Constants, PromptTemplate} from "./utils.js";
 import ConfirmModal from "./components/ConfirmModal.js";
 import {PageHeader} from "./components/PageHeader.js";
+import {loadSymbols} from "./svg-loader.js";
+
+loadSymbols();
 
 // Constants
 const DEFAULT_HISTORY_SIZE = 5;
@@ -1283,7 +1286,7 @@ function FlowInfoSection(props) {
                 h("span", {className: "detail-label", style: {marginBottom: "0", marginRight: "4px"}}, "Versions"),
                 h("div", {className: "tooltip-container"},
                   h("svg", {className: "info-icon", "aria-hidden": "true"},
-                    h("use", {xlinkHref: "symbols.svg#info"})
+                    h("use", {xlinkHref: "#info"})
                   ),
                   h("div", {className: "tooltip-content"}, "Total stored versions for this flow. Salesforce allows up to 50 versions per flow; the badge color shows how close you are to this limit (green = low, red = high).")
                 )
@@ -1296,7 +1299,7 @@ function FlowInfoSection(props) {
                   title: "Purge old versions"
                 },
                 h("svg", {className: "slds-button__icon", "aria-hidden": "true"},
-                  h("use", {xlinkHref: "symbols.svg#delete"})
+                  h("use", {xlinkHref: "#delete"})
                 )
                 )
               )
@@ -1462,7 +1465,7 @@ function PurgeModal(props) {
     cancelLabel: "Cancel",
     confirmVariant: "destructive",
     cancelVariant: "neutral",
-    confirmIconName: "symbols.svg#delete",
+    confirmIconName: "#delete",
     confirmIconPosition: "left",
     confirmDisabled: !purgeDetails || purgeDetails.toDeleteCount === 0,
     confirmType: "button",
@@ -2001,7 +2004,7 @@ class App extends React.Component {
       onConfirm: this.closePurgeResult,
       confirmLabel: "Close",
       confirmVariant: this.state.purgeResult.success ? "brand" : "destructive-text",
-      confirmIconName: this.state.purgeResult.success ? "symbols.svg#success" : "symbols.svg#error",
+      confirmIconName: this.state.purgeResult.success ? "#success" : "#error",
       confirmIconPosition: "left",
       confirmType: "button"
     },
@@ -2202,7 +2205,7 @@ class App extends React.Component {
                 "aria-hidden": "true",
                 style: {transform: isSevExpanded ? "rotate(0deg)" : "rotate(-90deg)"}
               },
-              h("use", {xlinkHref: "symbols.svg#accordion-chevron"})
+              h("use", {xlinkHref: "#accordion-chevron"})
               ),
               h("span", {className: "severity-label-group"},
                 SEVERITY_ICONS[severity],
@@ -2236,7 +2239,7 @@ class App extends React.Component {
                 h("span", {className: "rule-name-compact"}, ruleType),
                 h("div", {className: "tooltip-container"},
                   h("svg", {className: "info-icon", "aria-hidden": "true"},
-                    h("use", {xlinkHref: "symbols.svg#info"})
+                    h("use", {xlinkHref: "#info"})
                   ),
                   h("div", {className: "tooltip-content"}, description)
                 ),
@@ -2249,7 +2252,7 @@ class App extends React.Component {
                 "aria-hidden": "true",
                 style: {transform: ruleExpanded ? "rotate(0deg)" : "rotate(-90deg)"}
               },
-              h("use", {xlinkHref: "symbols.svg#accordion-chevron"})
+              h("use", {xlinkHref: "#accordion-chevron"})
               )
               ),
               h("div", {className: "rule-content", id: `${severity}-${ruleIdx}-content`},
@@ -2394,7 +2397,7 @@ class App extends React.Component {
             onClick: this.onToggleAgentforce
           },
           h("svg", {className: "slds-button__icon", "aria-hidden": "true"},
-            h("use", {xlinkHref: "symbols.svg#einstein"})
+            h("use", {xlinkHref: "#einstein"})
           ))),
           displayButton("flow-settings", this.state.hideButtonsOption) && h("div", {
             key: "help-btn",
@@ -2406,7 +2409,7 @@ class App extends React.Component {
             onClick: this.onToggleHelp
           },
           h("svg", {className: "slds-button__icon", "aria-hidden": "true"},
-            h("use", {xlinkHref: "symbols.svg#settings"})
+            h("use", {xlinkHref: "#settings"})
           )
           )
           )

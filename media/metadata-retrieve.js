@@ -4,6 +4,9 @@ import {PageHeader} from "./components/PageHeader.js";
 import {UserInfoModel, createSpinForMethod, copyToClipboard} from "./utils.js";
 import ConfirmModal from "./components/ConfirmModal.js";
 import {Spinner} from "./components/Spinner.js";
+import {loadSymbols} from "./svg-loader.js";
+
+loadSymbols();
 
 class Model {
   constructor(sfHost) {
@@ -945,10 +948,10 @@ class App extends React.Component {
           onCancel: this.onCloseMetadataModal,
           onCopy: this.onCopyMetadataXml,
           copyLabel: "Copy",
-          copyIconName: "symbols.svg#copy",
+          copyIconName: "#copy",
           onConfirm: this.onDownloadMetadataXml,
           confirmLabel: "Download",
-          confirmIconName: "symbols.svg#download",
+          confirmIconName: "#download",
           cancelLabel: "Close",
           children: h("div", {style: {maxHeight: "60vh", overflow: "auto"}},
             h("pre", {className: "reset-margin"},
@@ -996,12 +999,12 @@ class App extends React.Component {
             h("h1", {className: "slds-text-title_bold"}, "Metadata"),
             h("div", {className: "filter-box"},
               h("svg", {className: "filter-icon"},
-                h("use", {xlinkHref: "symbols.svg#search"})
+                h("use", {xlinkHref: "#search"})
               ),
               h("input", {className: "filter-input", disabled: model.metadataObjects?.length == 0, placeholder: "Filter", value: model.metadataFilter, onChange: this.onMetadataFilterInput, ref: "metadataFilter"}),
               h("a", {href: "about:blank", className: "filter-clear", title: "Clear filter", onClick: this.onClearAndFocusFilter},
                 h("svg", {className: "filter-clear-icon"},
-                  h("use", {xlinkHref: "symbols.svg#clear"})
+                  h("use", {xlinkHref: "#clear"})
                 )
               )
             ),
@@ -1028,27 +1031,27 @@ class App extends React.Component {
               }, "Retrieve Metadata"),
               model.statusLink ? h("button", {className: "slds-button slds-button_icon slds-button_icon-border-filled slds-m-left_x-small", onClick: () => this.refs.fileInput.click(), title: "Save status info"},
                 h("svg", {className: "slds-button__icon"},
-                  h("use", {xlinkHref: "symbols.svg#info"})
+                  h("use", {xlinkHref: "#info"})
                 )
               ) : null,
               h("button", {className: "slds-button slds-button_icon slds-button_icon-border-filled slds-m-left_x-small", onClick: () => this.downloadXml(), title: "Download package.xml"},
                 h("svg", {className: "slds-button__icon"},
-                  h("use", {xlinkHref: "symbols.svg#download"})
+                  h("use", {xlinkHref: "#download"})
                 )
               ),
               h("button", {className: "slds-button slds-button_icon slds-button_icon-border-filled slds-m-left_x-small", onClick: () => this.refs.fileInput.click(), title: "Import package.xml or package zip file"},
                 h("svg", {className: "slds-button__icon"},
-                  h("use", {xlinkHref: "symbols.svg#upload"})
+                  h("use", {xlinkHref: "#upload"})
                 )
               ),
               h("button", {className: "slds-button slds-button_icon slds-button_icon-border-filled slds-m-left_x-small", onClick: () => this.copyXml(), title: "Copy package.xml"},
                 h("svg", {className: "slds-button__icon"},
-                  h("use", {xlinkHref: "symbols.svg#copy"})
+                  h("use", {xlinkHref: "#copy"})
                 )
               ),
               h("button", {className: "slds-button slds-button_icon slds-button_icon-border-filled slds-m-left_x-small", onClick: () => this.showOptions(), title: "Display Deployment Settings"},
                 h("svg", {className: "slds-button__icon"},
-                  h("use", {xlinkHref: "symbols.svg#settings"})
+                  h("use", {xlinkHref: "#settings"})
                 )
               ),
               h("input", {
@@ -1283,7 +1286,7 @@ class ObjectSelector extends React.Component {
               h("h4", {className: "slds-accordion__summary-heading"},
                 h("button", {"aria-controls": "accordion-details-" + child.fullName, "aria-expanded": child.expanded, className: "slds-button slds-button_reset slds-accordion__summary-action"},
                   child.isFolder ? h("svg", {className: "reset-transform slds-accordion__summary-action-icon slds-button__icon slds-button__icon_left", "aria-hidden": "true"},
-                    h("use", {xlinkHref: "symbols.svg#" + (child.icon ? child.icon : "chevronright")})
+                    h("use", {xlinkHref: "#" + (child.icon ? child.icon : "chevronright")})
                   ) : null,
                   h("input", {type: "checkbox", className: !child.isFolder ? "margin-grandchild metadata" : "metadata", checked: !!child.selected}),
                   h("span", {
@@ -1299,7 +1302,7 @@ class ObjectSelector extends React.Component {
                     onClick: (e) => this.onViewMetadataClick(e, metadataType, metadataName),
                     title: "View metadata"
                   },
-                  h("use", {xlinkHref: "symbols.svg#preview"})
+                  h("use", {xlinkHref: "#preview"})
                   )
                   )
                 )
@@ -1325,7 +1328,7 @@ class ObjectSelector extends React.Component {
         h("h3", {className: "slds-accordion__summary-heading"},
           h("button", {"aria-controls": "accordion-details-" + metadataObject.xmlName, "aria-expanded": metadataObject.expanded, className: "slds-button slds-button_reset slds-accordion__summary-action"},
             h("svg", {className: "reset-transform slds-accordion__summary-action-icon slds-button__icon slds-button__icon_left", "aria-hidden": "true"},
-              h("use", {xlinkHref: "symbols.svg#" + (metadataObject.icon ? metadataObject.icon : "chevronright")})
+              h("use", {xlinkHref: "#" + (metadataObject.icon ? metadataObject.icon : "chevronright")})
             ),
             h("input", {type: "checkbox", className: "metadata", checked: !!metadataObject.selected, onChange: this.onChange, key: metadataObject.xmlName}),
             h("span", {
@@ -1351,6 +1354,10 @@ class ObjectSelector extends React.Component {
   let deployRequestId = args.get("deployRequestId");
   initButton(sfHost, true);
   sfConn.getSession(sfHost).then(() => {
+
+    if (!sfHost) {
+        sfHost = sfConn.instanceHostname;
+    }
 
     let root = document.getElementById("root");
     let model = new Model(sfHost);
