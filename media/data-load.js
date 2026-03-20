@@ -322,7 +322,7 @@ function renderCell(rt, cell, td) {
 
 
       function closer(ev) {
-        if (ev != e && ev.target.closest(".pop-menu") != pop) {
+        if (ev != e && (!ev.target || !(ev.target instanceof Node) || !pop.contains(ev.target))) {
           removeEventListener("click", closer);
           pop.remove();
         }
