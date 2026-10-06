@@ -136,16 +136,31 @@ function renderCell(rt, cell, td) {
     a.title = "Show all data";
     a.addEventListener("click", e => {
       e.preventDefault();
+      // Remove any existing overlays/popups to avoid stacking
+      document.querySelectorAll(".sfir-popup-overlay").forEach(el => el.remove());
+      document.querySelectorAll(".sfir-popup-menu").forEach(el => el.remove());
+      // Create a transparent full-screen overlay that sits BELOW the popup.
+      // Any click outside the popup will land here, closing both.
+      let overlay = document.createElement("div");
+      overlay.className = "sfir-popup-overlay";
+      overlay.style.cssText = "position:fixed;top:0;left:0;width:100vw;height:100vh;z-index:9999;";
+      document.body.appendChild(overlay);
       let pop = document.createElement("div");
-      pop.className = "slds-dropdown slds-dropdown_left slds-dropdown_actions";
+      pop.className = "slds-dropdown slds-dropdown_left slds-dropdown_actions sfir-popup-menu";
+      pop.style.zIndex = "10000";
       let ul = document.createElement("ul");
       ul.className = "slds-dropdown__list";
       pop.appendChild(ul);
       td.appendChild(pop);
-      let {objectTypes, recordId} = recordInfo();
+      // Clicking the overlay means the user clicked outside — dismiss both
+      overlay.addEventListener("mousedown", () => {
+        overlay.remove();
+        pop.remove();
+      });
+      let {objectTypes, recordId, isSubquery, subqueryCell} = recordInfo();
       let objectType = undefined;
-      function setLinks(linkOptions = {isCopy: true, isQueryRecord: true, isShowAllData: true, isViewInSalesforce: true}) {
-        let currentParams = new URLSearchParams(window.location.search);
+      function setLinks(linkOptions = {isCopy: true, isQueryRecord: true, isShowAllData: true, isViewInSalesforce: true, isExportAllData: true}) {
+        let currentParams = new URLSearchParams(typeof window.__queryString === "string" ? window.__queryString : window.location.search);
         let rawHost = (rt.sfHost && rt.sfHost !== "null") ? rt.sfHost : null;
         let paramHost = currentParams.get("host");
         if (paramHost === "null") paramHost = null;
@@ -194,7 +209,7 @@ function renderCell(rt, cell, td) {
           if (rt.isTooling) {
             queryArgs.set("useToolingApi", "1");
           }
-          let qParams = new URLSearchParams(window.location.search);
+          let qParams = new URLSearchParams(typeof window.__queryString === "string" ? window.__queryString : window.location.search);
           queryArgs.set("host", effectiveHost);
           queryArgs.set("query", query);
           if (qParams.get("proxy")) {
@@ -276,12 +291,82 @@ function renderCell(rt, cell, td) {
             ul.appendChild(liCopy);
           }
         }
+
+        if (linkOptions.isExportAllData && isSubquery && subqueryCell) {
+          let liExport = document.createElement("li");
+          liExport.className = "slds-dropdown__item sfir-justify-left";
+          ul.appendChild(liExport);
+          let aExport = document.createElement("a");
+          
+          let extractedQuery = "SELECT Id FROM " + (objectType || subqueryCell._relationshipName);
+          let hasWhere = false;
+          
+          if (rt.query && subqueryCell._relationshipName) {
+            let regex = new RegExp(`\\(\\s*(SELECT\\b.+?\\bFROM\\s+${subqueryCell._relationshipName}\\b.*?)\\)`, "i");
+            let match = regex.exec(rt.query);
+            if (match) {
+              extractedQuery = match[1];
+              if (objectType) {
+                 let fromRegex = new RegExp(`\\bFROM\\s+${subqueryCell._relationshipName}\\b`, "i");
+                 extractedQuery = extractedQuery.replace(fromRegex, `FROM ${objectType}`);
+              }
+              hasWhere = /\\bWHERE\\b/i.test(extractedQuery);
+            }
+          }
+          
+          let parentType = subqueryCell._parentType;
+          let parentId = subqueryCell._parentId;
+          let relationshipName = subqueryCell._relationshipName;
+          
+          let parentDescribe = parentType && rt.describeInfo ? rt.describeInfo.describeSobject(rt.isTooling, parentType).sobjectDescribe : null;
+          let relationField = null;
+          if (parentDescribe && parentDescribe.childRelationships) {
+             let rel = parentDescribe.childRelationships.find(cr => cr.relationshipName === relationshipName);
+             if (rel) {
+               relationField = rel.field;
+             }
+          }
+          
+          if (relationField && parentId) {
+             if (hasWhere) {
+               extractedQuery += ` AND ${relationField} = '${parentId}'`;
+             } else {
+               extractedQuery += ` WHERE ${relationField} = '${parentId}'`;
+             }
+          } else if (subqueryCell.records && subqueryCell.records.length > 0) {
+             let ids = subqueryCell.records.map(r => r.Id).filter(id => id);
+             if (ids.length > 0) {
+               if (hasWhere) {
+                 extractedQuery += ` AND Id IN ('${ids.join("', '")}')`;
+               } else {
+                 extractedQuery += ` WHERE Id IN ('${ids.join("', '")}')`;
+               }
+             }
+          }
+          
+          let queryArgs = new URLSearchParams();
+          if (rt.isTooling) { queryArgs.set("useToolingApi", "1"); }
+          let qParams = new URLSearchParams(typeof window.__queryString === "string" ? window.__queryString : window.location.search);
+          queryArgs.set("host", effectiveHost);
+          queryArgs.set("query", extractedQuery.trim());
+          if (qParams.get("proxy")) { queryArgs.set("proxy", "true"); }
+          aExport.href = "data-export.html?" + queryArgs;
+          aExport.target = "_blank";
+          aExport.textContent = "Export all data";
+          aExport.className = "query-record";
+          let aExportIcon = document.createElement("div");
+          aExportIcon.className = "icon";
+          liExport.appendChild(aExport);
+          aExport.prepend(aExportIcon);
+          ul.appendChild(liExport);
+        }
       }
       const defaultOptions = {
         isCopy: true,
         isQueryRecord: true,
         isShowAllData: true,
-        isViewInSalesforce: true
+        isViewInSalesforce: true,
+        isExportAllData: true
       };
 
       if (objectTypes.length === 1 && objectTypes[0] !== "Unknown") {
@@ -319,16 +404,8 @@ function renderCell(rt, cell, td) {
         objectType = null;
         setLinks(defaultOptions);
       }
-
-
-      function closer(ev) {
-        if (ev != e && (!ev.target || !(ev.target instanceof Node) || !pop.contains(ev.target))) {
-          removeEventListener("click", closer);
-          pop.remove();
-        }
-      }
-      addEventListener("click", closer);
     });
+
     a.textContent = label;
     td.appendChild(a);
   }
@@ -368,6 +445,17 @@ function renderCell(rt, cell, td) {
         return {objectTypes, recordId};
       },
       cell.attributes.type
+    );
+  } else if (typeof cell == "object" && cell != null && Array.isArray(cell.records)) {
+    popLink(
+      () => {
+        let objectType = undefined;
+        if (cell.records.length > 0 && cell.records[0].attributes) {
+          objectType = cell.records[0].attributes.type;
+        }
+        return { objectTypes: objectType ? [objectType] : [], recordId: null, isSubquery: true, subqueryCell: cell };
+      },
+      `[${cell.totalSize} record${s(cell.totalSize)}]`
     );
   } else if (typeof cell == "string" && isRecordId(cell)) {
     popLink(

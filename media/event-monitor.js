@@ -785,7 +785,7 @@ class App extends React.Component {
 }
 
 {
-  let args = new URLSearchParams(location.search.slice(1));
+  let args = new URLSearchParams(typeof window.__queryString === "string" ? window.__queryString : window.location.search.slice(1));
   let sfHost = args.get("host");
   initButton(sfHost, true);
   sfConn.getSession(sfHost).then((res) => {

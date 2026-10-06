@@ -22,7 +22,7 @@ export class SfdxService {
         return new Promise((resolve, reject) => {
             // Get the default username/alias from the workspace config or default
             // For now, we use 'sf org display --json' which shows the default org
-            cp.exec('sf org display --json', (error, stdout, stderr) => {
+            cp.exec('sf org display --json', async (error, stdout, stderr) => {
                 if (error) {
                     console.error(`Error executing sf command: ${error}`);
                     // Fallback to sfdx for older setups
@@ -36,8 +36,46 @@ export class SfdxService {
                     });
                     return;
                 }
-                this.updateCache(this.parseResponse(stdout));
+                
+                const parsedOrg = this.parseResponse(stdout);
+                
+                // If the access token is redacted by the new CLI, fetch it explicitly
+                if (parsedOrg && parsedOrg.accessToken && parsedOrg.accessToken.includes('REDACTED')) {
+                    const actualToken = await this.getAccessToken(parsedOrg.username);
+                    if (actualToken) {
+                        parsedOrg.accessToken = actualToken;
+                    }
+                }
+
+                this.updateCache(parsedOrg);
                 resolve(this.cachedOrg);
+            });
+        });
+    }
+
+    private static async getAccessToken(targetOrg: string): Promise<string | undefined> {
+        return new Promise((resolve) => {
+            cp.exec(`sf org auth show-access-token -o "${targetOrg}" --json`, (error, stdout) => {
+                if (error) {
+                    console.error(`Error executing sf org auth show-access-token: ${error}`);
+                    resolve(undefined);
+                    return;
+                }
+                try {
+                    const startIndex = stdout.indexOf('{');
+                    if (startIndex === -1) {
+                        return resolve(undefined);
+                    }
+                    const response = JSON.parse(stdout.substring(startIndex));
+                    if (response.status === 0 && response.result?.accessToken) {
+                        resolve(response.result.accessToken);
+                    } else {
+                        resolve(undefined);
+                    }
+                } catch (e) {
+                    console.error('Failed to parse access token response', e);
+                    resolve(undefined);
+                }
             });
         });
     }

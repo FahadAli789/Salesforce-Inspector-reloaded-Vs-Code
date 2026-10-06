@@ -745,7 +745,7 @@ class FieldRowList extends RowList {
 
     // Only include usage column if objectType parameter is present
     let defaultColumns = ["name", "label", "type"];
-    if (!new URLSearchParams(location.search.slice(1)).get("recordId")) {
+    if (!new URLSearchParams(typeof window.__queryString === "string" ? window.__queryString : window.location.search.slice(1)).get("recordId")) {
       defaultColumns.push("usage");
     }
 

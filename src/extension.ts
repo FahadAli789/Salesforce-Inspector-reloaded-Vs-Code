@@ -225,7 +225,7 @@ class InspectorManager {
         const settingsJson = JSON.stringify(inspectorSettings);
 
         // Escape the query string for safe injection into JavaScript
-        const escapedQuery = query.replace(/'/g, "\\'").replace(/\\/g, "\\\\");
+        const escapedQuery = query.replace(/\\/g, "\\\\").replace(/'/g, "\\'");
 
         const initScript = `
         <script nonce="${nonce}">

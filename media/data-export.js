@@ -1253,6 +1253,12 @@ function RecordTable(vm) {
       }
       row[c] = record[field];
       if (typeof record[field] == "object" && record[field] != null) {
+        if (Array.isArray(record[field].records) && record.attributes) {
+          let idMatch = record.attributes.url && record.attributes.url.match(/\/([a-zA-Z0-9]{15,18})$/);
+          record[field]._parentId = record.Id || (idMatch ? idMatch[1] : null);
+          record[field]._parentType = record.attributes.type;
+          record[field]._relationshipName = field;
+        }
         discoverColumns(record[field], column + ".", row);
       }
     }
@@ -1306,6 +1312,7 @@ function RecordTable(vm) {
     sfHost: vm.sfHost,
     describeInfo: vm.describeInfo,
     totalSize: -1,
+    query: vm.queryInput ? vm.queryInput.value : "",
     addToTable(expRecords) {
       rt.records = rt.records.concat(expRecords);
       if (rt.table.length == 0 && expRecords.length > 0) {
@@ -2087,7 +2094,8 @@ class App extends React.Component {
 
 {
 
-  let args = new URLSearchParams(location.search);
+  let queryString = typeof window.__queryString === "string" ? window.__queryString : window.location.search.slice(1);
+  let args = new URLSearchParams(queryString);
   let sfHost = args.get("host");
   let hash = new URLSearchParams(location.hash); //User-agent OAuth flow
   if (!sfHost && hash) {
